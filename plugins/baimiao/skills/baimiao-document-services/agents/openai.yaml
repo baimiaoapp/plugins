@@ -1,0 +1,10 @@
+interface:
+  display_name: "白描文档服务"
+  short_description: "通过白描安全完成 OCR、文档格式转换和多语言翻译服务"
+  default_prompt: "使用 $baimiao-document-services 识别或转换这个文件；上传前说明文件范围和可能消耗的积分。"
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "baimiao"
+      description: "白描 OCR、文档转换、翻译和 OAuth 工具"

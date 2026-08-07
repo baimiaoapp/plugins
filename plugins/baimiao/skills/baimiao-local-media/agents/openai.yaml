@@ -1,0 +1,4 @@
+interface:
+  display_name: "白描本地文件处理"
+  short_description: "完全在本地处理 PDF、图片、GIF 和视频文件"
+  default_prompt: "使用 $baimiao-local-media 在本地处理这些文件，并保留原文件。"

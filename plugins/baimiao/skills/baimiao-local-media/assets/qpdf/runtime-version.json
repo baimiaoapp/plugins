@@ -1,0 +1,17 @@
+{
+  "qpdfVersion": "v11.9.1",
+  "assetHash": "ea941220e4fd",
+  "sourceHash": "c03ee7aa663c",
+  "sourceFiles": {
+    "module": "qpdf.ea941220e4fd.mjs",
+    "wasm": "qpdf.ea941220e4fd.wasm"
+  },
+  "pdfLibVersion": "1.17.1",
+  "media": {
+    "ffmpegCoreVersion": "0.12.10",
+    "imageMagickVersion": "0.0.42",
+    "onnxRuntimeVersion": "1.26.0-dev.20260416-b7804b056c",
+    "pdfiumVersion": "2.14.4",
+    "rmbgModel": "kittypdf/RMBG-1.4-transformersjs@2d116050ec1d32554a52c017375e1cea31253b90:model.onnx (default), model_quantized.onnx (optional)"
+  }
+}

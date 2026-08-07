@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "baimiao": {
+      "command": "node",
+      "args": ["./mcp/baimiao-mcp.mjs"],
+      "cwd": "."
+    }
+  }
+}
