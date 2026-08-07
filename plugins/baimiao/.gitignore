@@ -3,4 +3,4 @@ node_modules/
 .yarn/cache/
 .yarn/install-state.gz
 dist/
-skills/baimiao/assets/media-runtime/
+skills/baimiao-local-media/assets/media-runtime/

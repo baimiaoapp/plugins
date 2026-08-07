@@ -1,0 +1,17 @@
+# macOS
+.DS_Store
+
+# Node.js and Yarn
+**/node_modules/
+**/.yarn/cache/
+**/.yarn/install-state.gz
+
+# Build and test output
+**/dist/
+**/coverage/
+*.log
+
+# Local environment files
+.env
+.env.*
+!.env.example
