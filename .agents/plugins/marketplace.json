@@ -1,14 +1,14 @@
 {
   "name": "baimiao-plugins",
   "interface": {
-    "displayName": "白描插件"
+    "displayName": "白描插件市场"
   },
   "plugins": [
     {
-      "name": "baimiao",
+      "name": "baimiao-toolbox",
       "source": {
         "source": "local",
-        "path": "./plugins/baimiao"
+        "path": "./plugins/baimiao-toolbox"
       },
       "policy": {
         "installation": "AVAILABLE",

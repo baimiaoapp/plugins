@@ -7,8 +7,8 @@ import path from 'node:path'
 import process from 'node:process'
 
 const DEFAULT_RESOURCE = 'https://pdf.baimiaoapp.com/api/web/mcp'
-const DEFAULT_CLIENT_ID = 'baimiao-stdio'
-const DEFAULT_SCOPE = 'mcp:tools'
+const DEFAULT_CLIENT_ID = 'baimiao-toolbox'
+const DEFAULT_SCOPE = 'documents:process'
 const CALLBACK_PATH = '/oauth/callback'
 const EXPIRY_SKEW_MS = 30_000
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000
@@ -75,7 +75,7 @@ export function createOAuthClient({
     async status() {
       const credential = await storage.read()
       if (!credential) return { authenticated: false, ...(needs_reauthorization ? { reason: 'reauthorize' } : {}) }
-      if (!validCredentialBoundary(credential, resource)) {
+      if (!validCredentialBoundary(credential, resource, client_id)) {
         await storage.clear()
         return { authenticated: false, reason: 'reauthorize' }
       }
@@ -97,7 +97,7 @@ export function createOAuthClient({
 
     async logout() {
       const credential = await storage.read()
-      if (credential && validCredentialBoundary(credential, resource)) {
+      if (credential && validCredentialBoundary(credential, resource, client_id)) {
         try {
           const metadata = await discover(fetch_impl, resource, metadata_url, request_timeout_ms)
           await revokeToken(fetch_impl, metadata.revocation_endpoint, {
@@ -112,13 +112,13 @@ export function createOAuthClient({
 
     async getAuthorizationHeaders() {
       const credential = await storage.read()
-      if (!credential || !validCredentialBoundary(credential, resource)) {
+      if (!credential || !validCredentialBoundary(credential, resource, client_id)) {
         await storage.clear()
         throw authRequired()
       }
       if (credential.expires_at <= now() + EXPIRY_SKEW_MS) await refresh()
       const current = await storage.read()
-      if (!current || !validCredentialBoundary(current, resource)) throw authRequired()
+      if (!current || !validCredentialBoundary(current, resource, client_id)) throw authRequired()
       return { authorization: `Bearer ${current.access_token}` }
     },
 
@@ -129,7 +129,7 @@ export function createOAuthClient({
     if (refresh_promise) return refresh_promise
     refresh_promise = (async () => {
       const credential = await storage.read()
-      if (!credential || !validCredentialBoundary(credential, resource) || typeof credential.refresh_token !== 'string' || !credential.refresh_token) {
+      if (!credential || !validCredentialBoundary(credential, resource, client_id) || typeof credential.refresh_token !== 'string' || !credential.refresh_token) {
         await storage.clear()
         throw authRequired()
       }
@@ -337,7 +337,7 @@ async function createLoopbackCallback({ state, timeout_ms }) {
     }
     const received_state = url.searchParams.get('state') || ''
     if (!constantTimeEqual(state, received_state)) {
-      response.writeHead(400, { 'content-type': 'text/plain; charset=utf-8' }).end('Authorization state mismatch. Return to Codex and retry.')
+      response.writeHead(400, { 'content-type': 'text/plain; charset=utf-8' }).end('Authorization state mismatch. Return to your AI assistant and retry.')
       reject_wait(new Error('OAuth callback state mismatch.'))
       server.close()
       return
@@ -345,7 +345,7 @@ async function createLoopbackCallback({ state, timeout_ms }) {
     const oauth_error = url.searchParams.get('error')
     const code = url.searchParams.get('code')
     if (oauth_error || !code) {
-      response.writeHead(400, { 'content-type': 'text/plain; charset=utf-8' }).end('Authorization was not completed. Return to Codex and retry.')
+      response.writeHead(400, { 'content-type': 'text/plain; charset=utf-8' }).end('Authorization was not completed. Return to your AI assistant and retry.')
       reject_wait(oauth_error === 'access_denied' ? authorizationDenied() : new Error(oauth_error ? 'OAuth authorization failed.' : 'OAuth callback did not contain a code.'))
       server.close()
       return
@@ -386,12 +386,12 @@ function defaultCredentialPath() {
   return path.join(os.homedir(), '.config', 'baimiao', 'oauth.json')
 }
 
-function validCredentialBoundary(value, audience) {
+function validCredentialBoundary(value, audience, client_id) {
   return typeof value.access_token === 'string' && value.access_token
     && value.token_type?.toLowerCase() === 'bearer'
     && Number.isFinite(value.expires_at)
     && typeof value.refresh_token === 'string' && value.refresh_token
-    && typeof value.client_id === 'string' && value.client_id
+    && value.client_id === client_id
     && value.audience === audience
     && typeof value.issuer === 'string'
     && String(value.scope || '').split(' ').includes(DEFAULT_SCOPE)

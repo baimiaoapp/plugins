@@ -40,7 +40,7 @@ try {
       assert.equal(body.get('resource'), resource)
       assert.equal(challengeFor(body.get('code_verifier')), challenge)
       code_requests += 1
-      return jsonResponse({ access_token: access_one, refresh_token: refresh_one, token_type: 'Bearer', expires_in: 600, scope: 'mcp:tools' })
+      return jsonResponse({ access_token: access_one, refresh_token: refresh_one, token_type: 'Bearer', expires_in: 600, scope: 'documents:process' })
     }
     if (String(url) === endpoints.revoke) {
       revoke_requests += 1
@@ -69,6 +69,13 @@ try {
   assert((await readFile(storage.path, 'utf8')).includes(access_one))
   const info = await stat(storage.path)
   if (process.platform !== 'win32') assert.equal(info.mode & 0o077, 0)
+
+  const legacy_storage = createCredentialStore({ credential_path: path.join(root, 'legacy', 'oauth.json') })
+  await legacy_storage.write({ ...saved, client_id: 'baimiao-stdio', scope: 'mcp:tools' })
+  const migrated_oauth = createOAuthClient({ fetch_impl, storage: legacy_storage, resource_url: resource, client_id: 'test-client' })
+  assert.deepEqual(await migrated_oauth.status(), { authenticated: false, reason: 'reauthorize' })
+  assert.equal(await legacy_storage.read(), null)
+
   assert.deepEqual(await oauth.logout(), { authenticated: false, credentials_removed: true })
   assert.equal(revoke_requests, 1)
 
@@ -87,7 +94,7 @@ try {
       return jsonResponse({
         access_token: access_two,
         ...(rotate_refresh_token ? { refresh_token: refresh_two, refresh_token_expires_in: 2_592_000 } : {}),
-        token_type: 'Bearer', expires_in: 1_800, scope: 'mcp:tools',
+        token_type: 'Bearer', expires_in: 1_800, scope: 'documents:process',
       })
     }
     throw new Error('Unexpected refresh URL')
@@ -123,7 +130,7 @@ try {
     fetch_impl: async (url, init = {}) => String(url) === endpoints.protected ? jsonResponse({ resource, authorization_servers: [issuer] })
       : String(url) === endpoints.metadata ? jsonResponse(metadata())
         : new Response(JSON.stringify({ error: 'invalid_grant' }), { status: 400, headers: { 'content-type': 'application/json' } }),
-    storage: failed_storage, resource_url: resource, now: () => now,
+    storage: failed_storage, resource_url: resource, client_id: 'test-client', now: () => now,
   })
   await assert.rejects(failed_oauth.getAuthorizationHeaders(), (error) => error.code === 'OAUTH_REAUTH_REQUIRED' && !error.message.includes(refresh_one))
   assert.equal(await failed_storage.read(), null)
@@ -149,7 +156,7 @@ try {
     if (request_url === endpoints.metadata) return jsonResponse(metadata())
     if (request_url === endpoints.token) {
       api_refreshes += 1
-      return jsonResponse({ access_token: access_two, refresh_token: refresh_two, token_type: 'Bearer', expires_in: 1_800, refresh_token_expires_in: 2_592_000, scope: 'mcp:tools' })
+      return jsonResponse({ access_token: access_two, refresh_token: refresh_two, token_type: 'Bearer', expires_in: 1_800, refresh_token_expires_in: 2_592_000, scope: 'documents:process' })
     }
     if (request_url.includes('/aliyun/oss/sign')) {
       sign_calls += 1

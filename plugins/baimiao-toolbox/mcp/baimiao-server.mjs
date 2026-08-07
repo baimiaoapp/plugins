@@ -139,7 +139,7 @@ export async function createBaimiaoServer({
         return result(request.id, {
           protocolVersion: negotiateProtocolVersion(request.params?.protocolVersion),
           capabilities: { tools: {} },
-          serverInfo: { name: 'baimiao', version: '0.5.0' },
+          serverInfo: { name: 'baimiao-toolbox', version: '0.5.0' },
         })
       }
       if (request.method === 'notifications/initialized') return null

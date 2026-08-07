@@ -1,4 +1,4 @@
-# Baimiao Plugin
+# Baimiao Toolbox
 
 This context names the file-processing concepts shared by the Plugin's local and remote workflows.
 

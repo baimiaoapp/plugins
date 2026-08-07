@@ -6,5 +6,5 @@ interface:
 dependencies:
   tools:
     - type: "mcp"
-      value: "baimiao"
+      value: "baimiao-toolbox"
       description: "白描 OCR、文档转换、翻译和 OAuth 工具"

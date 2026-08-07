@@ -5,8 +5,8 @@ __metadata:
   version: 8
   cacheKey: 10c0
 
-"baimiao-plugin@workspace:.":
+"baimiao-toolbox-plugin@workspace:.":
   version: 0.0.0-use.local
-  resolution: "baimiao-plugin@workspace:."
+  resolution: "baimiao-toolbox-plugin@workspace:."
   languageName: unknown
   linkType: soft

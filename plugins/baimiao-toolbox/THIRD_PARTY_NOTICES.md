@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-The Baimiao PDF Codex Plugin bundles its core JavaScript and WebAssembly runtimes and downloads
+The Baimiao Toolbox Plugin bundles its core JavaScript and WebAssembly runtimes and downloads
 larger optional runtimes from pinned public URLs on first use. The Plugin contains, downloads, or
 is built with the following projects:
 

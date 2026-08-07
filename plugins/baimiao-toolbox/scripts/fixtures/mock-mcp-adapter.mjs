@@ -7,8 +7,8 @@ let nextTask = 1
 
 export function createAdapter() {
   return {
-    async login() { return { authenticated: true, expires_at: '2099-01-01T00:00:00.000Z', scope: 'mcp:tools' } },
-    async authStatus() { return { authenticated: true, expires_at: '2099-01-01T00:00:00.000Z', scope: 'mcp:tools' } },
+    async login() { return { authenticated: true, expires_at: '2099-01-01T00:00:00.000Z', scope: 'documents:process' } },
+    async authStatus() { return { authenticated: true, expires_at: '2099-01-01T00:00:00.000Z', scope: 'documents:process' } },
     async logout() { return { authenticated: false, credentials_removed: true } },
     async submit(request) {
       if (process.env.BAIMIAO_MCP_MOCK_AUTH_REQUIRED === '1') {

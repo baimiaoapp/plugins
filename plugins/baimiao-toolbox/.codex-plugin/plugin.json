@@ -1,5 +1,5 @@
 {
-  "name": "baimiao",
+  "name": "baimiao-toolbox",
   "version": "0.5.0",
   "description": "Edit PDFs and media locally, with OAuth-authorized Baimiao OCR, document conversion, and translation.",
   "author": {
@@ -7,12 +7,12 @@
     "url": "https://baimiaoapp.com/"
   },
   "homepage": "https://pdf.baimiaoapp.com/",
-  "repository": "https://github.com/baimiaoapp/plugins/tree/main/plugins/baimiao",
+  "repository": "https://github.com/baimiaoapp/plugins/tree/main/plugins/baimiao-toolbox",
   "keywords": ["pdf", "image", "ocr", "heic", "gif", "video", "compress", "convert", "translate", "background removal", "local"],
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
-    "displayName": "白描",
+    "displayName": "白描工具箱",
     "shortDescription": "本地处理 PDF 与媒体，按需使用白描 OCR 和文档服务。",
     "longDescription": "在设备本地完成 PDF 页面整理与压缩、图片编辑、HEIC/GIF/视频转换和背景移除；仅在 OCR、PDF 转 Office/Markdown 和文档翻译时，通过 OAuth 授权接入白描服务。",
     "developerName": "白描",

@@ -15,7 +15,7 @@ const projectRoot = fileURLToPath(new URL('..', import.meta.url))
 const sourcePlugin = process.env.BAIMIAO_PDF_PLUGIN_PATH
   ? path.resolve(process.env.BAIMIAO_PDF_PLUGIN_PATH)
   : projectRoot
-const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'baimiao-plugin-test-'))
+const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'baimiao-toolbox-plugin-test-'))
 const runtimeCache = path.join(temporaryRoot, 'runtime-cache')
 process.env.BAIMIAO_PDF_RUNTIME_CACHE = runtimeCache
 let testMagickPromise
@@ -646,7 +646,7 @@ try {
       },
     },
   ])
-  assert.equal(mcpResponses[0].result.serverInfo.name, 'baimiao')
+  assert.equal(mcpResponses[0].result.serverInfo.name, 'baimiao-toolbox')
   assert.deepEqual(
     mcpResponses[1].result.tools.map((tool) => tool.name),
     [

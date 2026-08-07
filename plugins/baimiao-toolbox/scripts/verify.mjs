@@ -29,7 +29,7 @@ const manifest = JSON.parse(await readFile(path.join(root, '.codex-plugin/plugin
 const server = await readFile(path.join(root, 'mcp/baimiao-server.mjs'), 'utf8')
 const expectedVersion = packageJson.version
 if (manifest.version !== expectedVersion) throw new Error('Plugin and package versions differ.')
-const serverVersion = server.match(/serverInfo:\s*\{\s*name:\s*'baimiao',\s*version:\s*'([^']+)'/s)?.[1]
+const serverVersion = server.match(/serverInfo:\s*\{\s*name:\s*'baimiao-toolbox',\s*version:\s*'([^']+)'/s)?.[1]
 if (serverVersion !== expectedVersion) throw new Error('MCP server and package versions differ.')
 
 for (const [filename, asset] of Object.entries(RUNTIME_ASSETS)) {

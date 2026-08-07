@@ -1,7 +1,7 @@
 # Agent Guide
 
-- This repository contains the Baimiao Codex marketplace and its plugins.
-- The Baimiao plugin lives at `plugins/baimiao` and uses Yarn 4.6.0.
+- This repository contains the Baimiao plugin marketplace and its plugins.
+- Baimiao Toolbox lives at `plugins/baimiao-toolbox` and uses Yarn 4.6.0.
 - Prefer `yarn <script>` over npm or pnpm inside the plugin directory.
 - Keep PDF and image processing local unless a tool explicitly documents a remote API boundary.
 - Large media runtimes are downloaded on first use; never commit runtime cache files.
@@ -15,16 +15,16 @@
 
 ## Repository boundaries
 
-- Treat `plugins/baimiao/.codex-plugin/plugin.json` as the source of truth for plugin metadata.
-- Keep the marketplace entry at `.agents/plugins/marketplace.json` pointed at `./plugins/baimiao`.
+- Treat `plugins/baimiao-toolbox/.codex-plugin/plugin.json` as the source of truth for plugin metadata.
+- Keep the marketplace entry at `.agents/plugins/marketplace.json` pointed at `./plugins/baimiao-toolbox`.
 - Do not duplicate plugin interface metadata or assets at the repository root.
-- Keep feature code, skills, MCP servers, resources, and plugin descriptions under `plugins/baimiao`.
+- Keep feature code, skills, MCP servers, resources, and plugin descriptions under `plugins/baimiao-toolbox`.
 - Keep general generated-file rules in the root `.gitignore` and plugin-specific runtime rules in
-  `plugins/baimiao/.gitignore`.
+  `plugins/baimiao-toolbox/.gitignore`.
 
 ## Verification
 
-Run these checks from `plugins/baimiao` before release:
+Run these checks from `plugins/baimiao-toolbox` before release:
 
 ```bash
 yarn install --immutable

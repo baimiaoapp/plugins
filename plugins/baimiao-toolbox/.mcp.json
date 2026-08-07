@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "baimiao": {
+    "baimiao-toolbox": {
       "command": "node",
       "args": ["./mcp/baimiao-mcp.mjs"],
       "cwd": "."

@@ -42,7 +42,7 @@ await Promise.all(requiredFiles.map(async (filename) => {
 }))
 
 const manifest = JSON.parse(await readFile(path.join(projectRoot, '.codex-plugin/plugin.json'), 'utf8'))
-if (manifest.name !== 'baimiao') throw new Error('Plugin manifest name must remain baimiao.')
+if (manifest.name !== 'baimiao-toolbox') throw new Error('Plugin manifest name must remain baimiao-toolbox.')
 if (manifest.mcpServers !== './.mcp.json') throw new Error('Plugin manifest must reference .mcp.json.')
 
 for (const filename of forbiddenBundledPaths) {
