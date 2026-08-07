@@ -24,7 +24,7 @@
 2. 选择“添加插件市场”，输入：
 
 ```text
-https://github.com/baimiaoapp/plugins.git
+https://gitee.com/baimiaoapp/plugins
 ```
 
 3. 从“白描插件市场”选择需要的插件。
@@ -33,6 +33,6 @@ https://github.com/baimiaoapp/plugins.git
 也可以通过命令行安装：
 
 ```bash
-codex plugin marketplace add https://github.com/baimiaoapp/plugins.git
+codex plugin marketplace add https://gitee.com/baimiaoapp/plugins
 codex plugin add baimiao-toolbox@baimiao-plugins
 ```
