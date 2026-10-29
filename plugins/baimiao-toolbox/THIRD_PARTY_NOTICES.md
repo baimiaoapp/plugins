@@ -34,3 +34,17 @@ is built with the following projects:
 The QPDF notice also contains attribution for code included within QPDF, including its Rijndael and
 sphlib-derived implementations. The original license and notice texts are distributed alongside the
 runtime and govern their respective components.
+
+## Additional optional runtimes in 0.6.0
+
+- WordCraft preview at f30ad85ac4b7ac453a099728ded7fa6f62b50624 and DeckCraft preview at
+  fddfdf432aa950e9a2c82d7610674a3ab65a5679, MIT OR Apache-2.0. Source, transitive notices and font
+  notices accompany `third-party/wordcraft-preview/` and `third-party/deckcraft-preview/`.
+  Fonts are downloaded only when selected by the pinned coverage/family catalog. Named symbol fonts
+  have their own notices and are not described as OFL fonts.
+- DocsaidLab DocAligner LC100 heatmap model, Apache-2.0; see `third-party/DOCALIGNER-LICENSE.txt`.
+- SlimSAM encoder/decoder from `Xenova/slimsam-77-uniform` revision
+  5850ab45f587c112167512ffef949107115e26a0, Apache-2.0; see `third-party/SLIMSAM-LICENSE.txt`.
+- Real-ESRGAN photo x4plus and anime 6B ONNX conversions. Upstream Real-ESRGAN is BSD-3-Clause;
+  see `third-party/REALESRGAN-LICENSE.txt`. Exact conversion repository revisions and file hashes
+  are recorded in `extended-runtime-assets.mjs`.

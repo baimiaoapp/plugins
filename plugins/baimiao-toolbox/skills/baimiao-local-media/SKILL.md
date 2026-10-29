@@ -1,12 +1,16 @@
 ---
 name: baimiao-local-media
-description: Process PDF, image, HEIC, GIF, and video files entirely on the user's device with the Baimiao JavaScript/WASM CLI. Use for PDF merge, split, extraction, compression, rendering, page editing, passwords, or repair; image conversion, compression, resize, crop, privacy masking, watermarking, rounded corners, rotation, or background removal; GIF creation or extraction; and video-to-GIF. Trigger for equivalent Chinese or English local file-processing requests. Do not use for OCR, PDF-to-Office/Markdown, or document translation.
+description: Process documents and media locally with the Baimiao JavaScript/WASM CLI. Use for PDF editing and compression, DOCX/PPTX to PDF, document scanning and enhancement, image editing and AI upscaling or cutout, and GIF/video or cutout animation workflows. Supports Chinese and English requests. Do not use for OCR, cloud PDF-to-Office/Markdown, or document translation.
 ---
 
 # Baimiao Local Media
 
 Process the user's files on their device with the local CLI. Never upload files, overwrite an
 existing file, delete inputs, or claim support for operations outside this skill.
+
+For scanning, Office to PDF, AI images, target-size compression, and result handoffs, read
+[references/advanced-operations.md](references/advanced-operations.md). Use returned metadata to
+report target-size misses, missing Office glyphs, and uncertain document crops.
 
 ## Run The Workflow
 

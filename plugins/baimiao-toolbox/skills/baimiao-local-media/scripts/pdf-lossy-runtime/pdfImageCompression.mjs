@@ -1,4 +1,10 @@
 import {
+  preparePdfCompression,
+  resolveImageCompressionSettings,
+  classifyJpegContent,
+} from './pdfCompressionPlan.mjs'
+import { originalCompressionResult } from './pdfCompressionSafety.mjs'
+import {
   PDFArray,
   PDFDict,
   PDFDocument,
@@ -16,8 +22,12 @@ import {
   collectPdfImageStreams,
   PDF_IMAGE_ANALYSIS_NAMES,
 } from './pdfImageAnalysis.mjs'
-import { analyzePdfDocumentFromPdf, COMPRESSION_STRATEGIES } from './pdfDocumentAnalysis.mjs'
-import { LOSSY_COMPRESS_POLICY, getLossyCompressPreset } from './lossyCompressionPolicy.mjs'
+import { COMPRESSION_STRATEGIES } from './pdfDocumentAnalysis.mjs'
+import { analyzePdfImagePlacements } from './pdfImagePlacementAnalysis.mjs'
+import {
+  LOSSY_COMPRESS_POLICY,
+  getLossyCompressPreset,
+} from './lossyCompressionPolicy.mjs'
 
 const PDF_NAME_DEVICE_RGB = PDFName.of('DeviceRGB')
 const PDF_NAME_DEVICE_GRAY = PDFName.of('DeviceGray')
@@ -28,6 +38,8 @@ const PDF_NAME_COLORS = PDFName.of('Colors')
 const PDF_NAME_PREDICTOR = PDFName.of('Predictor')
 const PDF_NAME_DECODE = PDFName.of('Decode')
 const DEFAULT_MAX_DECODE_PIXELS = 24_000_000
+const DEFAULT_REFERENCE_PAGE_LONG_EDGE_INCHES = 11
+const MIN_PLACEMENT_AWARE_DIMENSION = 64
 const DEFAULT_LOSSY_PRESET = getLossyCompressPreset()
 const DEFAULT_MIN_SAVINGS_BYTES = LOSSY_COMPRESS_POLICY.minSavingsBytes
 
@@ -48,13 +60,28 @@ export const compressPdfImagesWithCodec = async (file, codec, options = {}) => {
 export const runPdfImageCompressionPipeline = async (
   file,
   options = {},
-  { createCodecAdapter, optimizeOutput, onProgress = () => {}, now = () => performance.now() } = {},
+  {
+    createCodecAdapter,
+    optimizeOutput,
+    onProgress = () => {},
+    now = () => performance.now(),
+    prepared,
+    checkBudget,
+  } = {},
 ) => {
   const startedAt = now()
   onProgress(0.14, '正在分析 PDF 类型')
-  const pdf = await PDFDocument.load(file, { ignoreEncryption: false, updateMetadata: false })
-  const imageStreams = collectPdfImageStreams(pdf)
-  const documentAnalysis = analyzePdfDocumentFromPdf(pdf, options, imageStreams)
+  const plan = prepared || (await preparePdfCompression(file, options))
+  const { pdf, images: imageStreams, documentAnalysis, compatibilityReason } = plan
+  if (compatibilityReason)
+    return [
+      originalCompressionResult(file, {
+        compatibilityReason,
+        skippedImages: imageStreams.length,
+        compressionBudget: plan.budget,
+        documentType: documentAnalysis.documentType,
+      }),
+    ]
   onProgress(0.18, '正在分析 PDF 图片对象')
 
   const analysis = analyzePdfImageCompressionCandidatesFromImages(imageStreams, options)
@@ -62,7 +89,7 @@ export const runPdfImageCompressionPipeline = async (
 
   if (!analysis.candidateCount && !hasFlattenableAlphaImages(analysis, options, imageStreams)) {
     return finishImageCompressionResult(file, options, documentAnalysis, startedAt, now, {
-      result: createNoRewriteResult(file, analysis),
+      result: { ...createNoRewriteResult(file, analysis), compressionBudget: plan.budget },
       optimizeOutput,
       onProgress,
       encodeBackend: '',
@@ -83,21 +110,30 @@ export const runPdfImageCompressionPipeline = async (
   let imageCompressionError = null
   const rewriteStartedAt = now()
   try {
-    result = await compressPdfImagesInDocumentWithCodec(pdf, file, codec, {
-      ...options,
-      onProgress: ({ current, total }) => {
-        const imageProgress = total ? current / total : 0
-        onProgress(0.45 + imageProgress * 0.4, `正在重编码图片 ${current}/${total}`)
+    result = await compressPdfImagesInDocumentWithCodec(
+      pdf,
+      file,
+      codec,
+      {
+        ...options,
+        checkBudget,
+        onProgress: ({ current, total }) => {
+          const imageProgress = total ? current / total : 0
+          onProgress(0.45 + imageProgress * 0.4, `正在重编码图片 ${current}/${total}`)
+        },
       },
-    })
+      plan,
+    )
   } catch (error) {
     if (error?.code !== 'COMPRESS_NOT_EFFECTIVE') throw error
     imageCompressionError = error
     result = createNoRewriteResult(file, analysis, error.details)
   }
 
+  if (options.estimateOnly)
+    return [{ ...result, estimatedSize: result.estimatedSize ?? file.byteLength }]
   return finishImageCompressionResult(file, options, documentAnalysis, startedAt, now, {
-    result,
+    result: { ...result, compressionBudget: plan.budget },
     imageCompressionError,
     optimizeOutput,
     onProgress,
@@ -107,14 +143,37 @@ export const runPdfImageCompressionPipeline = async (
   })
 }
 
-export const compressPdfImagesInDocumentWithCodec = async (pdf, file, codec, options = {}) => {
+export const compressPdfImagesInDocumentWithCodec = async (
+  pdf,
+  file,
+  codec,
+  options = {},
+  prepared,
+) => {
+  const images = prepared?.images || collectPdfImageStreams(pdf)
+  const bindings = images.flatMap((image) =>
+    image.resourceBindings.map((binding) => ({
+      ...binding,
+      value: binding.resources.get(binding.name),
+    })),
+  )
+  try {
+    return await compressImagesTrial(pdf, file, codec, options, prepared, images)
+  } finally {
+    // Every trial starts from original streams, including after a failed save.
+    for (const image of images) if (image.ref) pdf.context.assign(image.ref, image.stream)
+    for (const binding of bindings) binding.resources.set(binding.name, binding.value)
+  }
+}
+
+const compressImagesTrial = async (pdf, file, codec, options, prepared, images) => {
   if (typeof codec?.reencodeJpeg !== 'function') {
     throw Object.assign(new Error('Image codec is unavailable.'), { code: 'UNSUPPORTED_PDF' })
   }
 
   const progress = typeof options.onProgress === 'function' ? options.onProgress : () => {}
   const originalSize = file.byteLength
-  const maxImageDimension = Number(options.maxImageDimension) || DEFAULT_LOSSY_PRESET.maxImageDimension
+  const maxImageDimension = Number(options.maxImageDimension) || 1280
   const maxDecodePixels = Number(options.maxDecodePixels) || DEFAULT_MAX_DECODE_PIXELS
   const jpegQuality = Number(options.jpegQuality) || DEFAULT_LOSSY_PRESET.jpegQuality
   const minSavingsBytes = normalizeMinSavingsBytes(options.minSavingsBytes)
@@ -122,15 +181,25 @@ export const compressPdfImagesInDocumentWithCodec = async (pdf, file, codec, opt
   let compressedImages = 0
   let skippedImages = 0
   const skippedByReason = {}
-  const images = collectPdfImageStreams(pdf)
+  const placements = prepared?.placements || analyzePdfImagePlacements(pdf)
+  let streamSavings = 0
+  const contentCounts = { photo: 0, document: 0, sharp: 0 }
   const filtersByName = summarizeFilters(images)
+  let placementAwareImages = 0
+  let reusedImageEncodes = 0
+  let deduplicatedImageObjects = 0
+  const encodedImageCache = new Map()
 
   for (const [index, image] of images.entries()) {
+    options.checkBudget?.()
     progress({ current: index + 1, total: images.length })
-    const analysis = analyzePdfImageStream(
-      image.stream,
-      image.pageNumber,
-      image.name,
+    const analysis =
+      prepared?.analyses.get(image.stream) ||
+      analyzePdfImageStream(image.stream, image.pageNumber, image.name, maxImageDimension)
+    let effectiveMaxImageDimension = getEffectiveMaxImageDimension(
+      analysis,
+      image.ref,
+      placements,
       maxImageDimension,
     )
     const canFlattenAlpha = !keepTransparencyPng && canFlattenSoftMaskImage(image.stream, analysis)
@@ -142,30 +211,126 @@ export const compressPdfImagesInDocumentWithCodec = async (pdf, file, codec, opt
     }
 
     const originalBytes = image.stream.asUint8Array()
-    if (exceedsDecodePixelLimit(analysis, maxDecodePixels)) {
+    // No non-empty replacement can meet the absolute savings threshold in
+    // this case, so avoid allocating decoded pixels or entering WASM at all.
+    if (originalBytes.byteLength <= minSavingsBytes) {
+      skippedImages++
+      incrementReason(skippedByReason, 'NOT_SMALLER')
+      continue
+    }
+    if (
+      !analysis.filters.includes('DCTDecode') &&
+      exceedsDecodePixelLimit(analysis, maxDecodePixels, effectiveMaxImageDimension)
+    ) {
       skippedImages++
       incrementReason(skippedByReason, 'TOO_MANY_PIXELS')
       continue
     }
-    const encoded = await tryEncodeImageWithCodec(
-      image.stream,
-      analysis,
-      codec,
-      jpegQuality,
-      maxImageDimension,
-      {
-        flattenAlpha: canFlattenAlpha,
-        grayscale: options.grayscale,
-        maxDecodePixels,
-      },
+    // JPEG classification belongs to the content-aware family. Legacy trials
+    // must neither inherit sharp-image skips nor overwrite that classification.
+    const cacheContentKind = !analysis.filters.includes('DCTDecode') || options.contentAware
+    let contentKind = cacheContentKind ? prepared?.contentKinds.get(image.stream) : undefined
+    let contentAnalysis = null
+    if (!contentKind && shouldAnalyzeFlateContent(analysis, options, canFlattenAlpha)) {
+      contentAnalysis = analyzeFlateImageContent(image.stream, analysis)
+      contentKind = contentAnalysis?.preserveSharpGraphics
+        ? 'sharp'
+        : contentAnalysis?.photo
+          ? 'photo'
+          : 'document'
+    }
+    if (!contentKind && options.contentAware && analysis.filters.includes('DCTDecode')) {
+      const placement = image.ref && placements.get(image.ref.toString())
+      const fullPageDocument =
+        options.compressionMode === 'target' &&
+        analysis.width * analysis.height >= 1_000_000 &&
+        placement?.widthPoints >= 288 &&
+        placement?.heightPoints >= 360
+      contentKind = await classifyJpegContent(image, analysis, maxDecodePixels, fullPageDocument)
+    }
+    contentKind ||= 'document'
+    if (cacheContentKind) prepared?.contentKinds.set(image.stream, contentKind)
+    contentCounts[contentKind]++
+    if (contentKind === 'sharp' && options.preserveSharpGraphics !== false) {
+      skippedImages++
+      incrementReason(skippedByReason, 'PRESERVE_SHARP_GRAPHICS')
+      continue
+    }
+    let imageQuality = jpegQuality
+    if (options.contentAware) {
+      const settings = resolveImageCompressionSettings(
+        analysis,
+        image.ref && placements.get(image.ref.toString()),
+        contentKind,
+        options,
+      )
+      effectiveMaxImageDimension = settings.maxImageDimension
+      imageQuality = settings.jpegQuality
+    }
+    if (
+      effectiveMaxImageDimension <
+      (options.contentAware ? Math.max(analysis.width, analysis.height) : maxImageDimension)
     )
+      placementAwareImages++
+    if (exceedsDecodePixelLimit(analysis, maxDecodePixels, effectiveMaxImageDimension)) {
+      skippedImages++
+      incrementReason(skippedByReason, 'TOO_MANY_PIXELS')
+      continue
+    }
+    const cacheKey = canFlattenAlpha
+      ? ''
+      : createEncodedImageCacheKey(
+          image.stream,
+          analysis,
+          imageQuality,
+          effectiveMaxImageDimension,
+          options.grayscale,
+        )
+    const cacheLookupKey = cacheKey ? `${cacheKey}|${fingerprintBytes(originalBytes)}` : ''
+    const cachedEncoding = findCachedEncoding(encodedImageCache, cacheLookupKey, originalBytes)
+    let encoded = cachedEncoding?.encoded || null
+    if (cachedEncoding) {
+      reusedImageEncodes++
+    } else {
+      const trialKey = `${image.ref}|${imageQuality}|${effectiveMaxImageDimension}|${!!options.grayscale}|${canFlattenAlpha}`
+      encoded =
+        prepared?.encodingCache.get(trialKey) ||
+        (await tryEncodeImageWithCodec(
+          image.stream,
+          analysis,
+          codec,
+          imageQuality,
+          effectiveMaxImageDimension,
+          {
+            flattenAlpha: canFlattenAlpha,
+            grayscale: options.grayscale,
+            maxDecodePixels,
+            decodedFlateSamples: contentAnalysis?.samples,
+          },
+        ))
+      if (prepared && encoded?.data && !prepared.encodingCache.has(trialKey)) {
+        const limit = 16 * 1024 * 1024
+        while (
+          prepared.encodingCacheBytes + encoded.data.byteLength > limit &&
+          prepared.encodingCache.size
+        ) {
+          const key = prepared.encodingCache.keys().next().value
+          prepared.encodingCacheBytes -= prepared.encodingCache.get(key).data.byteLength
+          prepared.encodingCache.delete(key)
+        }
+        if (encoded.data.byteLength <= limit) {
+          prepared.encodingCache.set(trialKey, encoded)
+          prepared.encodingCacheBytes += encoded.data.byteLength
+        }
+      }
+    }
 
     if (
       !encoded?.data?.byteLength ||
       !isMeaningfullySmaller(
         encoded.data.byteLength,
         originalBytes.byteLength,
-        minSavingsBytes,
+        Math.max(minSavingsBytes, originalBytes.byteLength * (options.minSavingsRatio ?? 0.02)),
       )
     ) {
       skippedImages++
@@ -188,8 +353,15 @@ export const compressPdfImagesInDocumentWithCodec = async (pdf, file, codec, opt
       nextDict.delete(PDF_IMAGE_ANALYSIS_NAMES.mask)
     }
 
-    pdf.context.assign(image.ref, PDFRawStream.of(nextDict, encoded.data))
+    const reboundToCanonicalImage = rebindImageResourceBindings(image, cachedEncoding?.ref)
+    if (reboundToCanonicalImage) {
+      deduplicatedImageObjects++
+    } else {
+      pdf.context.assign(image.ref, PDFRawStream.of(nextDict, encoded.data))
+      cacheEncoding(encodedImageCache, cacheLookupKey, originalBytes, encoded, image.ref)
+    }
     compressedImages++
+    streamSavings += originalBytes.byteLength - encoded.data.byteLength
   }
 
   if (!compressedImages) {
@@ -199,6 +371,17 @@ export const compressPdfImagesInDocumentWithCodec = async (pdf, file, codec, opt
     })
   }
 
+  const estimatedSize = Math.max(1, originalSize - streamSavings)
+  if (options.estimateOnly)
+    return {
+      estimatedSize,
+      compressedImages,
+      skippedImages,
+      contentCounts,
+      skippedByReason,
+      filtersByName,
+    }
+  options.checkBudget?.()
   const data = await pdf.save({ useObjectStreams: true, updateFieldAppearances: false })
   if (data.byteLength >= originalSize) {
     throw Object.assign(new Error('Compressed PDF is not smaller.'), {
@@ -212,7 +395,12 @@ export const compressPdfImagesInDocumentWithCodec = async (pdf, file, codec, opt
     skippedImages,
     skippedByReason,
     filtersByName,
+    placementAwareImages,
+    reusedImageEncodes,
+    deduplicatedImageObjects,
     outputSize: data.byteLength,
+    contentCounts,
+    estimatedSize,
   }
 }
 
@@ -227,17 +415,211 @@ const isMeaningfullySmaller = (nextSize, originalSize, minSavingsBytes) => {
   return nextSize > 0 && originalSize > 0 && savedBytes >= minSavingsBytes
 }
 
+const createEncodedImageCacheKey = (
+  stream,
+  analysis,
+  jpegQuality,
+  maxImageDimension,
+  grayscale,
+) => {
+  try {
+    return [
+      stream.dict.toString(),
+      analysis.width,
+      analysis.height,
+      jpegQuality,
+      maxImageDimension,
+      grayscale ? 1 : 0,
+    ].join('|')
+  } catch {
+    return ''
+  }
+}
+
+const findCachedEncoding = (cache, key, sourceBytes) => {
+  if (!key) return null
+  const entries = cache.get(key) || []
+  return entries.find((entry) => bytesEqual(entry.sourceBytes, sourceBytes)) || null
+}
+
+const cacheEncoding = (cache, key, sourceBytes, encoded, ref) => {
+  if (!key || !encoded?.data?.byteLength || !ref) return
+  const entries = cache.get(key) || []
+  entries.push({ sourceBytes, encoded, ref })
+  cache.set(key, entries)
+}
+
+const rebindImageResourceBindings = (image, canonicalRef) => {
+  if (!canonicalRef || canonicalRef === image.ref || !image.resourceBindings?.length) return false
+  for (const binding of image.resourceBindings) {
+    binding.resources.set(binding.name, canonicalRef)
+  }
+  return true
+}
+
+const fingerprintBytes = (bytes) => {
+  const sampleCount = Math.min(64, bytes.byteLength)
+  let hash = Math.imul(2166136261 ^ bytes.byteLength, 16777619)
+  for (let index = 0; index < sampleCount; index++) {
+    const offset =
+      sampleCount === 1 ? 0 : Math.floor((index * (bytes.byteLength - 1)) / (sampleCount - 1))
+    hash = Math.imul(hash ^ bytes[offset], 16777619)
+  }
+  return `${bytes.byteLength}:${(hash >>> 0).toString(16)}`
+}
+
+const bytesEqual = (left, right) => {
+  if (left === right) return true
+  if (left.byteLength !== right.byteLength) return false
+  for (let index = 0; index < left.byteLength; index++) {
+    if (left[index] !== right[index]) return false
+  }
+  return true
+}
+
+const getEffectiveMaxImageDimension = (analysis, ref, placements, configuredMaxImageDimension) => {
+  const placement = ref ? placements.get(ref.toString()) : null
+  if (!placement || !(analysis.width > 0 && analysis.height > 0)) {
+    return configuredMaxImageDimension
+  }
+  const targetDpi = configuredMaxImageDimension / DEFAULT_REFERENCE_PAGE_LONG_EDGE_INCHES
+  const requiredWidth = (placement.widthPoints / 72) * targetDpi
+  const requiredHeight = (placement.heightPoints / 72) * targetDpi
+  const scale = Math.min(
+    1,
+    Math.max(requiredWidth / analysis.width, requiredHeight / analysis.height),
+  )
+  const targetLongEdge = Math.ceil(Math.max(analysis.width, analysis.height) * scale)
+  return Math.min(
+    configuredMaxImageDimension,
+    Math.max(MIN_PLACEMENT_AWARE_DIMENSION, targetLongEdge),
+  )
+}
+
 const getCompressionSkipReason = (analysis, canFlattenAlpha) => {
-  if (
-    !canFlattenAlpha &&
-    analysis.bitsPerComponent &&
-    analysis.bitsPerComponent < 8 &&
-    analysis.filters.includes('DCTDecode')
-  ) {
+  if (!canFlattenAlpha && analysis.bitsPerComponent && analysis.bitsPerComponent < 8) {
     return 'LOW_BIT_DEPTH'
   }
   return ''
 }
+
+const shouldAnalyzeFlateContent = (analysis, options, canFlattenAlpha) => {
+  return (
+    options.preserveSharpGraphics !== false &&
+    !canFlattenAlpha &&
+    analysis.bitsPerComponent === 8 &&
+    analysis.filters.length === 1 &&
+    analysis.filters[0] === 'FlateDecode'
+  )
+}
+
+const analyzeFlateImageContent = (stream, analysis) => {
+  const components = analysis.colorSpace === 'Indexed' ? 1 : analysis.colorSpaceComponents
+  const samples = decodeFlateSamples(stream, analysis, components)
+  if (!samples) return null
+
+  const columns = Math.min(64, analysis.width)
+  const rows = Math.min(64, analysis.height)
+  if (columns * rows < 64) return { samples, preserveSharpGraphics: false }
+  const signatures = new Set()
+  const indexedPalette =
+    analysis.colorSpace === 'Indexed' ? getIndexedPalette(stream, analysis) : null
+  const previousRow = Array.from({ length: columns })
+  let flatNeighbors = 0
+  let sharpNeighbors = 0
+  let neighborCount = 0
+
+  for (let row = 0; row < rows; row++) {
+    let previous = null
+    const y = Math.min(analysis.height - 1, Math.floor(((row + 0.5) * analysis.height) / rows))
+    for (let column = 0; column < columns; column++) {
+      const x = Math.min(
+        analysis.width - 1,
+        Math.floor(((column + 0.5) * analysis.width) / columns),
+      )
+      const color = readSampledColor(samples, analysis, y * analysis.width + x, indexedPalette)
+      if (!color) return { samples, preserveSharpGraphics: false }
+      signatures.add(
+        getQuantizedColorSignature(
+          color,
+          analysis.colorSpace === 'Indexed'
+            ? analysis.baseColorSpaceComponents
+            : analysis.colorSpaceComponents,
+        ),
+      )
+      if (previous) {
+        const distance = getColorDistance(color, previous)
+        if (distance <= 6) flatNeighbors++
+        if (distance >= 48) sharpNeighbors++
+        neighborCount++
+      }
+      if (previousRow[column]) {
+        const distance = getColorDistance(color, previousRow[column])
+        if (distance <= 6) flatNeighbors++
+        if (distance >= 48) sharpNeighbors++
+        neighborCount++
+      }
+      previous = color
+      previousRow[column] = color
+    }
+  }
+
+  const sampleCount = columns * rows
+  const uniqueRatio = signatures.size / sampleCount
+  const flatRatio = neighborCount ? flatNeighbors / neighborCount : 0
+  const sharpRatio = neighborCount ? sharpNeighbors / neighborCount : 0
+  const preserveSharpGraphics =
+    signatures.size <= 12 ||
+    (flatRatio >= 0.82 && sharpRatio >= 0.02) ||
+    (uniqueRatio <= 0.04 && flatRatio >= 0.45 && sharpRatio >= 0.02)
+
+  return { samples, preserveSharpGraphics, photo: uniqueRatio > 0.25 && flatRatio < 0.45 }
+}
+
+const readSampledColor = (samples, analysis, pixelIndex, indexedPalette) => {
+  if (analysis.colorSpace === 'Indexed') {
+    const index = samples[pixelIndex]
+    if (!indexedPalette || index > analysis.indexedHighValue) return null
+    return readColorComponents(
+      indexedPalette,
+      index * analysis.baseColorSpaceComponents,
+      analysis.baseColorSpaceComponents,
+    )
+  }
+  return readColorComponents(
+    samples,
+    pixelIndex * analysis.colorSpaceComponents,
+    analysis.colorSpaceComponents,
+  )
+}
+
+const readColorComponents = (samples, offset, components) => {
+  if (components === 1) {
+    const gray = samples[offset]
+    return [gray, gray, gray]
+  }
+  if (components === 3) return [samples[offset], samples[offset + 1], samples[offset + 2]]
+  if (components === 4) {
+    const c = samples[offset]
+    const m = samples[offset + 1]
+    const y = samples[offset + 2]
+    const k = samples[offset + 3]
+    return [
+      Math.round(((255 - c) * (255 - k)) / 255),
+      Math.round(((255 - m) * (255 - k)) / 255),
+      Math.round(((255 - y) * (255 - k)) / 255),
+    ]
+  }
+  return null
+}
+
+const getQuantizedColorSignature = (color, sourceComponents) => {
+  if (sourceComponents === 1) return color[0]
+  return `${color[0] >> 4}:${color[1] >> 4}:${color[2] >> 4}`
+}
+
+const getColorDistance = (left, right) =>
+  (Math.abs(left[0] - right[0]) + Math.abs(left[1] - right[1]) + Math.abs(left[2] - right[2])) / 3
 
 const canFlattenSoftMaskImage = (stream, analysis) => {
   const softMask = stream.dict.lookupMaybe(PDF_IMAGE_ANALYSIS_NAMES.sMask, PDFRawStream, PDFStream)
@@ -293,8 +675,10 @@ const createNoRewriteResult = (file, analysis, compressionDetails = {}) => ({
   data: new Uint8Array(file),
   outputSize: file.byteLength,
   compressedImages: 0,
-  skippedImages: analysis.skippedCount || analysis.imageCount || 0,
-  skippedByReason: mergeSummaries(analysis.skippedByReason, compressionDetails.skippedByReason),
+  skippedImages: analysis.imageCount || 0,
+  reusedImageEncodes: 0,
+  deduplicatedImageObjects: 0,
+  skippedByReason: compressionDetails.skippedByReason || analysis.skippedByReason || {},
   filtersByName: analysis.filtersByName || compressionDetails.filtersByName || {},
 })
 
@@ -337,6 +721,11 @@ const finishImageCompressionResult = async (
       jpxCodecAvailable,
       compressedImages: result.compressedImages,
       skippedImages: result.skippedImages,
+      contentCounts: result.contentCounts,
+      compressionBudget: result.compressionBudget,
+      placementAwareImages: result.placementAwareImages || 0,
+      reusedImageEncodes: result.reusedImageEncodes || 0,
+      deduplicatedImageObjects: result.deduplicatedImageObjects || 0,
       skippedByReason: result.skippedByReason,
       filtersByName: result.filtersByName,
       imageCompressionNotEffective: !!imageCompressionError,
@@ -356,18 +745,49 @@ const formatImageCodecBackend = (codec) => {
   return '图片编码器'
 }
 
-const mergeSummaries = (...summaries) => {
-  return summaries.reduce((merged, summary) => {
-    if (!summary || typeof summary !== 'object') return merged
-    for (const [key, count] of Object.entries(summary)) merged[key] = (merged[key] || 0) + count
-    return merged
-  }, {})
+const exceedsDecodePixelLimit = (analysis, maxDecodePixels, maxImageDimension) => {
+  if (!(analysis.width > 0 && analysis.height > 0)) return false
+
+  // libjpeg can decode JPEGs at 1/2, 1/4, or 1/8 resolution before allocating
+  // the intermediate pixel buffer. Apply the safety limit to that buffer rather
+  // than the source dimensions so large camera images can still be downsampled.
+  if (analysis.filters.includes('DCTDecode')) {
+    const target = getBoundedImageSize(analysis.width, analysis.height, maxImageDimension)
+    const denominator = getJpegScaledDecodeDenominator(
+      analysis.width,
+      analysis.height,
+      target.width,
+      target.height,
+    )
+    return (
+      Math.ceil(analysis.width / denominator) * Math.ceil(analysis.height / denominator) >
+      maxDecodePixels
+    )
+  }
+
+  return analysis.width * analysis.height > maxDecodePixels
 }
 
-const exceedsDecodePixelLimit = (analysis, maxDecodePixels) => {
-  return (
-    analysis.width > 0 && analysis.height > 0 && analysis.width * analysis.height > maxDecodePixels
-  )
+const getBoundedImageSize = (width, height, maxDimension) => {
+  const limit = Math.max(0, Math.round(Number(maxDimension) || 0))
+  if (!limit || (width <= limit && height <= limit)) return { width, height }
+  const scale = limit / Math.max(width, height)
+  return {
+    width: Math.max(1, Math.round(width * scale)),
+    height: Math.max(1, Math.round(height * scale)),
+  }
+}
+
+const getJpegScaledDecodeDenominator = (width, height, targetWidth, targetHeight) => {
+  for (const denominator of [8, 4, 2]) {
+    if (
+      Math.ceil(width / denominator) >= targetWidth &&
+      Math.ceil(height / denominator) >= targetHeight
+    ) {
+      return denominator
+    }
+  }
+  return 1
 }
 
 const incrementReason = (summary, reason) => {
@@ -503,7 +923,7 @@ const encodeImageWithCodec = async (
   }
 
   if (analysis.filters.includes('FlateDecode')) {
-    const indexedRgb = decodeFlateImageToIndexedRgb(stream, analysis)
+    const indexedRgb = decodeFlateImageToIndexedRgb(stream, analysis, options)
     if (indexedRgb) {
       const indexedGray =
         typeof codec.encodeGrayJpeg === 'function'
@@ -533,7 +953,7 @@ const encodeImageWithCodec = async (
 
     const indexedGray =
       typeof codec.encodeGrayJpeg === 'function'
-        ? decodeFlateImageToIndexedGray(stream, analysis)
+        ? decodeFlateImageToIndexedGray(stream, analysis, options)
         : null
     if (indexedGray) {
       return codec.encodeGrayJpeg({
@@ -662,7 +1082,7 @@ const encodeImageWithCodec = async (
   return null
 }
 
-const decodeFlateImageToIndexedRgb = (stream, analysis) => {
+const decodeFlateImageToIndexedRgb = (stream, analysis, options = {}) => {
   if (analysis.colorSpace !== 'Indexed') return null
   if (
     Number(analysis.baseColorSpaceComponents) !== 3 ||
@@ -672,7 +1092,7 @@ const decodeFlateImageToIndexedRgb = (stream, analysis) => {
   const palette = getIndexedPalette(stream, analysis)
   const highValue = Number(analysis.indexedHighValue)
   if (!palette || highValue < 0 || palette.byteLength < (highValue + 1) * 3) return null
-  const raw = decodeFlateSamples(stream, analysis, 1)
+  const raw = options.decodedFlateSamples || decodeFlateSamples(stream, analysis, 1)
   if (!raw) return null
   const indexes = unpackIndexedSamples(
     raw,
@@ -683,7 +1103,7 @@ const decodeFlateImageToIndexedRgb = (stream, analysis) => {
   return { indexes, palette, paletteEntries: highValue + 1 }
 }
 
-const decodeFlateImageToIndexedGray = (stream, analysis) => {
+const decodeFlateImageToIndexedGray = (stream, analysis, options = {}) => {
   if (analysis.colorSpace !== 'Indexed') return null
   if (
     Number(analysis.baseColorSpaceComponents) !== 1 ||
@@ -693,7 +1113,7 @@ const decodeFlateImageToIndexedGray = (stream, analysis) => {
   const palette = getIndexedPalette(stream, analysis)
   const highValue = Number(analysis.indexedHighValue)
   if (!palette || highValue < 0 || palette.byteLength < highValue + 1) return null
-  const raw = decodeFlateSamples(stream, analysis, 1)
+  const raw = options.decodedFlateSamples || decodeFlateSamples(stream, analysis, 1)
   if (!raw) return null
   const indexes = unpackIndexedSamples(
     raw,
@@ -739,7 +1159,7 @@ const decodeFlateImageToLab = (stream, analysis, options) => {
   const pixels = analysis.width * analysis.height
   const components = Number(analysis.colorSpaceComponents) || 0
   if (components !== 3 || analysis.colorSpace !== 'Lab') return null
-  const raw = decodeFlateSamples(stream, analysis, components)
+  const raw = options.decodedFlateSamples || decodeFlateSamples(stream, analysis, components)
   if (!raw) return null
   const lab = normalizeComponentSamples(
     raw,
@@ -756,7 +1176,7 @@ const decodeFlateImageToGray = (stream, analysis, options) => {
   const pixels = analysis.width * analysis.height
   const components = Number(analysis.colorSpaceComponents) || 0
   if (components !== 1 || analysis.colorSpace !== 'DeviceGray') return null
-  const raw = decodeFlateSamples(stream, analysis, components)
+  const raw = options.decodedFlateSamples || decodeFlateSamples(stream, analysis, components)
   if (!raw) return null
   const gray = normalizeComponentSamples(
     raw,
@@ -780,7 +1200,7 @@ const decodeFlateImageToCmyk = (stream, analysis, options) => {
   const pixels = analysis.width * analysis.height
   const components = Number(analysis.colorSpaceComponents) || 0
   if (components !== 4 || analysis.colorSpace !== 'DeviceCMYK') return null
-  const raw = decodeFlateSamples(stream, analysis, components)
+  const raw = options.decodedFlateSamples || decodeFlateSamples(stream, analysis, components)
   if (!raw) return null
   const cmyk = normalizeComponentSamples(
     raw,
@@ -802,7 +1222,7 @@ const decodeFlateColorImageToGray = (stream, analysis, options) => {
     !['DeviceRGB', 'DeviceCMYK', 'Lab'].includes(analysis.colorSpace)
   )
     return null
-  const raw = decodeFlateSamples(stream, analysis, components)
+  const raw = options.decodedFlateSamples || decodeFlateSamples(stream, analysis, components)
   if (!raw) return null
   const samples = normalizeComponentSamples(
     raw,
@@ -822,7 +1242,7 @@ const decodeFlateColorImageToGray = (stream, analysis, options) => {
 const decodeFlateImageToRgb = (stream, analysis, options) => {
   const pixels = analysis.width * analysis.height
   const components = Number(analysis.colorSpaceComponents) || 0
-  const raw = decodeFlateSamples(stream, analysis, components)
+  const raw = options.decodedFlateSamples || decodeFlateSamples(stream, analysis, components)
   if (!raw) return null
   if (analysis.colorSpace === 'Indexed') return indexedSamplesToRgb(stream, analysis, raw)
   const samples = normalizeComponentSamples(

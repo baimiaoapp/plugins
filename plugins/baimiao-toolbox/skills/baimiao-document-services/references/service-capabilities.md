@@ -15,7 +15,7 @@ These workflows upload user-selected files to Baimiao services and may require l
 | PDF to Markdown | `start_baimiao_conversion` | `format: markdown` |
 | PDF to PowerPoint | `start_baimiao_conversion` | `format: ppt` |
 | PDF to Excel | `start_baimiao_conversion` | `format: excel` |
-| PDF translation | `start_baimiao_translation` | `mode: normal` or `compare` |
+| PDF translation | `start_baimiao_translation` | `mode: normal` or `compare`; `output_format: word` (default) or `pdf` |
 | Image text OCR | `start_baimiao_ocr` | `kind: text` |
 | Image formula OCR | `start_baimiao_ocr` | `kind: latex` |
 | Image table OCR | `start_baimiao_ocr` | `kind: table` |

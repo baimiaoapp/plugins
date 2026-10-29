@@ -55,7 +55,7 @@ export function createAdapter({
       const translation = operation === 'pdf-translate'
       const endpoint = translation ? 'pdf/translate' : 'pdf/convert'
       const body = translation
-        ? { file_key: sign.file_key, translate_to: options.target_language, mode: options.mode, num_pages: input.num_pages, name: input.name }
+        ? { file_key: sign.file_key, translate_to: options.target_language, output_format: options.output_format || 'word', mode: options.mode, num_pages: input.num_pages, name: input.name }
         : { file_key: sign.file_key, convert_to: options.format, num_pages: input.num_pages, name: input.name }
       const submitted = await requestData(fetch_impl, new URL(endpoint, api_base_url), {
         method: 'POST', headers: jsonHeaders(current_auth_headers), body: JSON.stringify(body),

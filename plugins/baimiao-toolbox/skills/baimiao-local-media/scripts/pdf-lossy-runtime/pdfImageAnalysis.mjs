@@ -99,6 +99,7 @@ export const replaceFirstPdfImageStreamForSpike = async (file, replacementBytes)
 export const collectPdfImageStreams = (pdf) => {
   const images = []
   const visitedRefs = new Set()
+  const imagesByRef = new Map()
   for (const [pageIndex, page] of pdf.getPages().entries()) {
     scanResources(
       page.node.Resources(),
@@ -106,19 +107,23 @@ export const collectPdfImageStreams = (pdf) => {
       pageIndex + 1,
       images,
       visitedRefs,
+      imagesByRef,
     )
   }
   return images
 }
 
-const scanResources = (resources, context, pageNumber, images, visitedRefs) => {
+const scanResources = (resources, context, pageNumber, images, visitedRefs, imagesByRef) => {
   if (!(resources instanceof PDFDict)) return
   const xObjects = resources.lookupMaybe(NAME.xObject, PDFDict)
   if (!(xObjects instanceof PDFDict)) return
 
   for (const [name, value] of xObjects.entries()) {
     const refKey = value instanceof PDFRef ? value.toString() : ''
-    if (refKey && visitedRefs.has(refKey)) continue
+    if (refKey && visitedRefs.has(refKey)) {
+      imagesByRef.get(refKey)?.resourceBindings.push({ resources: xObjects, name })
+      continue
+    }
     if (refKey) visitedRefs.add(refKey)
 
     const object = context.lookup(value)
@@ -126,12 +131,15 @@ const scanResources = (resources, context, pageNumber, images, visitedRefs) => {
 
     const subtype = object.dict.lookupMaybe(NAME.subtype, PDFName)
     if (subtype === IMAGE_SUBTYPE) {
-      images.push({
+      const image = {
         ref: value instanceof PDFRef ? value : context.getObjectRef(object),
         stream: object,
         pageNumber,
         name,
-      })
+        resourceBindings: [{ resources: xObjects, name }],
+      }
+      images.push(image)
+      if (refKey) imagesByRef.set(refKey, image)
       continue
     }
 
@@ -142,6 +150,7 @@ const scanResources = (resources, context, pageNumber, images, visitedRefs) => {
         pageNumber,
         images,
         visitedRefs,
+        imagesByRef,
       )
     }
   }

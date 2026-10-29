@@ -18,7 +18,8 @@ and refuse to overwrite an existing output.
    used. The user's OAuth approval is upload consent, so do not request a second per-call consent.
 4. Start the matching operation:
    - Use `start_baimiao_conversion` for PDF to `docx`, `markdown`, `ppt`, or `excel`.
-   - Use `start_baimiao_translation` with a target language and `normal` or `compare` mode.
+   - Use `start_baimiao_translation` with a target language, `normal` or `compare` mode,
+     and `output_format: "word"` (default) or `"pdf"`.
    - Use `start_baimiao_ocr` for `text`, `latex`, or `table` recognition.
 5. Poll `get_baimiao_task`; do not hold one tool call open for a long conversion.
 6. For file results, call `save_baimiao_result` with a new absolute output path and verify that it
@@ -41,3 +42,9 @@ tokens, passwords, verification codes, payment data, or session cookies.
 
 Require explicit user confirmation immediately before purchases, redemption, account mutation, or
 any action that consumes credits when the UI discloses a charge.
+
+## Continue Locally
+
+After saving a result, pass its verified path to the local-media skill for local PDF editing,
+compression, or DOCX/PPTX-to-PDF conversion. Keep each intermediate file and choose new output paths.
+Do not automatically submit a second cloud job when only local follow-up processing was requested.

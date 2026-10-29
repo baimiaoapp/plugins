@@ -1,6 +1,8 @@
+import { EXTENDED_RUNTIME_ASSETS } from './extended-runtime-assets.mjs'
 export const RUNTIME_CACHE_VERSION = 'v1'
 
 export const RUNTIME_ASSETS = Object.freeze({
+  ...EXTENDED_RUNTIME_ASSETS,
   'magick.mjs': asset(
     276851,
     '296b2de0fdabc3a32e4bd1a8c19a0630e6704899577de8c44acbde7ac4b908d8',
@@ -71,11 +73,16 @@ export const RUNTIME_ASSETS = Object.freeze({
   'NotoSansCJKsc-Regular.otf': asset(
     16437364,
     '2c76254f6fc379fddfce0a7e84fb5385bb135d3e399294f6eeb6680d0365b74b',
-    mirrors('https://raw.githubusercontent.com/notofonts/noto-cjk/main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf', 'https://cdn.jsdmirror.com/gh/notofonts/noto-cjk@main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf'),
+    mirrors('https://cdn.pdf.baimiaoapp.com/assets/wordcraft-preview/fonts/noto-sans-cjk-sc-2c76254f6fc379fd.otf', 'https://cdn.pdf.baimiaoapp.com/assets/wordcraft-preview/fonts/noto-sans-cjk-sc-2c76254f6fc379fd.otf'),
   ),
 })
 
 export const RUNTIME_BUNDLES = Object.freeze({
+  office: Object.freeze(Object.keys(EXTENDED_RUNTIME_ASSETS).filter(name => /^(wordcraft|deckcraft)-preview/.test(name))),
+  scan: Object.freeze(['docaligner-lcnet100.onnx']),
+  'smart-cutout': Object.freeze(['slimsam-encoder.onnx', 'slimsam-decoder.onnx']),
+  'upscale-photo': Object.freeze(['upscale-photo.onnx']),
+  'upscale-anime': Object.freeze(['upscale-anime.onnx']),
   magick: Object.freeze(['magick.mjs', 'magick.wasm']),
   pdfium: Object.freeze(['pdfium.mjs', 'pdfium.wasm']),
   ffmpeg: Object.freeze(['ffmpeg-core.mjs', 'ffmpeg-core.wasm']),

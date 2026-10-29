@@ -15,7 +15,11 @@ export const compressPdfImages = async (data, plan = {}) => {
   if (!preset) throw new CliError('INVALID_PLAN', 'preset must be small, standard, or clear.')
   const options = {
     ...preset,
-    minSavingsBytes: 4096,
+    contentAware: plan.contentAware === true,
+    targetDpi: plan.targetDpi ?? 144,
+    textDpi: plan.textDpi ?? 180,
+    textQuality: plan.textQuality ?? 0.8,
+    minSavingsBytes: plan.minSavingsBytes ?? 4096,
     mode: 'image-xobject',
     keepTransparencyPng: plan.flattenTransparency !== true,
     grayscale: Boolean(plan.grayscale),

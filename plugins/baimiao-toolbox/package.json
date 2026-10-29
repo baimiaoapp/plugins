@@ -1,13 +1,14 @@
 {
   "name": "baimiao-toolbox-plugin",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "type": "module",
   "packageManager": "yarn@4.6.0",
   "scripts": {
     "build": "node scripts/build-plugin.mjs",
     "lint": "node scripts/lint.mjs",
-    "test": "node scripts/test-artifact-transaction.mjs && node scripts/test-operation-catalog.mjs && node scripts/test-mcp-protocol.mjs && node scripts/test-oauth.mjs && node scripts/test-plugin.mjs",
+    "test": "node scripts/test-artifact-transaction.mjs && node scripts/test-operation-catalog.mjs && node scripts/test-mcp-protocol.mjs && node scripts/test-oauth.mjs && node scripts/test-plugin.mjs && node scripts/test-extended.mjs",
+    "test:ai": "node scripts/test-extended.mjs --ai",
     "verify": "node scripts/verify.mjs",
     "runtime:prefetch": "node scripts/prefetch-runtime.mjs"
   }

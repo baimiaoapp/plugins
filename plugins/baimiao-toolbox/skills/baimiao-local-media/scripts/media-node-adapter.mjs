@@ -1,3 +1,4 @@
+import { localResultHandoffs } from './result-handoffs.mjs'
 import { randomUUID } from 'node:crypto'
 import { readFile, realpath, stat } from 'node:fs/promises'
 import path from 'node:path'
@@ -54,6 +55,9 @@ export const runMediaOperation = async ({ operation, options, transactions = def
   const inputs = await Promise.all(options.inputs.map(resolveRegularInput))
   rejectDuplicateInputs(inputs)
 
+  const { isExtendedOperation, runExtendedOperation } = await import('./extended-media.mjs')
+  if (isExtendedOperation(operation)) return runExtendedOperation({ operation, inputs, options, plan, transactions })
+
   if (operation === 'pdf-to-images') return renderPdfToImages(inputs[0], options.outputDir, plan, transactions)
   if (operation === 'compress-lossy') return compressPdfLossy(inputs[0], options.output, plan, transactions)
   if (operation === 'video-to-gif') return convertVideoToGif(inputs[0], options.output, plan, transactions)
@@ -68,6 +72,7 @@ const processImages = async (operation, inputs, outputDirPath, plan, transaction
   const outputDirectory = await transactions.resolveOutputDirectory(outputDirPath)
   const outputFormat = normalizeOutputFormat(plan.format || plan.outputType, operation === 'image-compress' ? 'webp' : 'png')
   const results = []
+  const { encodeImageWithTarget } = await import('./target-compression.mjs')
 
   for (const input of inputs) {
     let image
@@ -76,9 +81,10 @@ const processImages = async (operation, inputs, outputDirPath, plan, transaction
       image.autoOrient()
       applyImageOperation(magick, operation, image, plan)
       prepareImageForWrite(magick, image, outputFormat, plan)
-      const data = image.write(magick.MagickFormat[outputFormat.format], (bytes) => new Uint8Array(bytes))
+      const encoded = operation === 'image-compress' ? encodeImageWithTarget(magick, image, outputFormat, plan)
+        : { data: image.write(magick.MagickFormat[outputFormat.format], (bytes) => new Uint8Array(bytes)) }
       results.push({
-        data,
+        ...encoded,
         path: await transactions.resolveOutputPath(path.join(
           outputDirectory,
           `${basenameWithoutExtension(input.path)}-${operationSuffix(operation)}.${outputFormat.extension}`,
@@ -100,8 +106,19 @@ const processImages = async (operation, inputs, outputDirPath, plan, transaction
 
 const applyImageOperation = (magick, operation, image, plan) => {
   if (operation === 'image-compress') {
-    const maxEdge = integerInRange(plan.maxEdge, 240, 6000, 1920, 'maxEdge')
-    resizeToContain(image, maxEdge, maxEdge, magick)
+    if (plan.aspectRatio) {
+      const crop = normalizeCrop({ aspectRatio: plan.aspectRatio }, image.width, image.height)
+      image.crop(new magick.MagickGeometry(crop.x, crop.y, crop.width, crop.height)); image.resetPage()
+    }
+    if (plan.width !== undefined || plan.height !== undefined) {
+      const width = integerInRange(plan.width ?? Math.round(image.width * Number(plan.height) / image.height), 1, 8000, 1280, 'width')
+      const height = integerInRange(plan.height ?? Math.round(image.height * width / image.width), 1, 8000, 1280, 'height')
+      if (plan.keepAspectRatio === false) resizeImageExactly(magick, image, width, height)
+      else image.resize(width, height, magick.FilterType.Lanczos)
+    } else {
+      const maxEdge = integerInRange(plan.maxEdge, 240, 6000, 1920, 'maxEdge')
+      resizeToContain(image, maxEdge, maxEdge, magick)
+    }
     return
   }
   if (operation === 'image-resize') {
@@ -421,8 +438,8 @@ const renderPdfToImages = async (input, outputDirPath, plan, transactions) => {
 const compressPdfLossy = async (input, outputPath, plan, transactions) => {
   assertPdfInput(input)
   const resolvedOutput = await transactions.resolveOutputPath(outputPath)
-  const { compressPdfImages } = await import('./pdf-lossy-node-adapter.mjs')
-  const result = await compressPdfImages(input.data, plan)
+  const { compressPdfWithTarget } = await import('./target-compression.mjs')
+  const result = await compressPdfWithTarget(input.data, plan)
   const outputs = [{
     data: result.data,
     path: resolvedOutput,
@@ -668,6 +685,7 @@ const createResult = (operation, backend, outputs) => ({
     path: output.path,
     type: output.type,
     size: output.data.byteLength,
+    nextOperations: localResultHandoffs(output.type).filter(name => name !== operation),
     ...(output.originalSize ? { originalSize: output.originalSize } : {}),
     ...(output.metadata ? { metadata: output.metadata } : {}),
   })),
@@ -820,7 +838,10 @@ const parseAspectRatio = (value) => {
 }
 
 const numberInRange = (value, minimum, maximum, fallback, name) => {
-  if (value === undefined || value === null || value === '') return fallback
+  if (value === undefined || value === null || value === '') {
+    if (!Number.isFinite(fallback)) throw new CliError('INVALID_PLAN', `${name} is required.`)
+    return fallback
+  }
   const number = Number(value)
   if (!Number.isFinite(number) || number < minimum || number > maximum) throw new CliError('INVALID_PLAN', `${name} must be between ${minimum} and ${maximum}.`)
   return number
@@ -857,3 +878,5 @@ const operationSuffix = (operation) => ({
   'image-rotate-flip': 'transformed',
   'image-watermark': 'watermarked',
 }[operation] || 'processed')
+
+export { loadMagick, loadOrt, loadPdfium, loadFfmpeg, openPdfiumDocument, closePdfiumDocument, renderPdfiumPage, normalizePageSelection, resolveRegularInput, createResult, resizeImageExactly, numberInRange, integerInRange, enumValue, prepareImageForWrite, normalizeOutputFormat }

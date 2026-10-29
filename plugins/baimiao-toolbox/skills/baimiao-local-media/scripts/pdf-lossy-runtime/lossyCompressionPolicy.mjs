@@ -5,6 +5,7 @@ export const LOSSY_COMPRESS_POLICY = Object.freeze({
   imageCodecBackend: 'wasm',
   convertPngToJpeg: true,
   keepTransparencyPng: true,
+  preserveSharpGraphics: true,
   maxDimensionMax: 2400,
   qualityMax: 0.95,
 })
@@ -39,10 +40,13 @@ export const getLossyCompressPreset = (name = LOSSY_COMPRESS_POLICY.defaultPrese
 }
 
 export const createLossyCompressOptions = (presetOrName, overrides = {}) => {
-  const preset = typeof presetOrName === 'string' ? getLossyCompressPreset(presetOrName) : presetOrName
+  const preset =
+    typeof presetOrName === 'string' ? getLossyCompressPreset(presetOrName) : presetOrName
   const resolvedPreset = preset || getLossyCompressPreset()
   return {
     preset: resolvedPreset.name,
+    contentAware: false,
+    minSavingsRatio: 0,
     maxImageDimension: resolvedPreset.maxImageDimension,
     jpegQuality: resolvedPreset.jpegQuality,
     minSavingsBytes: LOSSY_COMPRESS_POLICY.minSavingsBytes,
@@ -50,6 +54,18 @@ export const createLossyCompressOptions = (presetOrName, overrides = {}) => {
     imageCodecBackend: LOSSY_COMPRESS_POLICY.imageCodecBackend,
     convertPngToJpeg: LOSSY_COMPRESS_POLICY.convertPngToJpeg,
     keepTransparencyPng: LOSSY_COMPRESS_POLICY.keepTransparencyPng,
+    preserveSharpGraphics: LOSSY_COMPRESS_POLICY.preserveSharpGraphics,
     ...overrides,
   }
 }
+
+// Automatic target bounds are independent of the historical manual quality path.
+export const PDF_TARGET_IMAGE_FLOOR = Object.freeze({
+  contentAware: true,
+  minSavingsBytes: 256,
+  minSavingsRatio: 0.02,
+  targetDpi: 96,
+  textDpi: 144,
+  jpegQuality: 0.55,
+  textQuality: 0.72,
+})

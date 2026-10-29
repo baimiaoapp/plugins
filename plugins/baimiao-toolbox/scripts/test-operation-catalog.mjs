@@ -13,14 +13,14 @@ import {
 } from '../skills/baimiao-local-media/scripts/operation-catalog.mjs'
 
 assert.equal(new Set(LOCAL_OPERATION_NAMES).size, LOCAL_OPERATION_NAMES.length)
-assert.equal(LOCAL_OPERATION_CATALOG.length, 32)
+assert.equal(LOCAL_OPERATION_CATALOG.length, 42)
 assert.equal(getLocalOperation('merge').minInputs, 2)
 assert.equal(getLocalOperation('images-to-pdf').uniqueInputs, false)
 assert.equal(getLocalOperation('reorder-plan').backend, 'pdf-lib')
 assert.equal(getLocalOperation('pdf-to-images').category, 'pdf')
 assert.equal(getLocalOperation('image-rembg').plan, 'optional')
 assert.equal(QPDF_OPERATION_NAMES.length + MEDIA_OPERATION_NAMES.length
-  + LOCAL_OPERATION_CATALOG.filter(({ backend }) => backend === 'pdf-lib').length, 32)
+  + LOCAL_OPERATION_CATALOG.filter(({ backend }) => backend === 'pdf-lib').length, 42)
 assert.equal(IMAGE_OPERATION_NAMES.includes('pdf-to-images'), false)
 await assert.rejects(
   executeLocalOperation(['missing']),

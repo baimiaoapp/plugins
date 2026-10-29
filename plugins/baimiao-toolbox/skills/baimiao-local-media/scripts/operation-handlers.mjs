@@ -1,3 +1,4 @@
+import { localResultHandoffs } from './result-handoffs.mjs'
 import path from 'node:path'
 
 import { CliError, parsePageOrder, parsePageRanges, parseRotationAngle,
@@ -191,6 +192,7 @@ const publishPdf = async ({ operation, adapter, inputs, outputPaths, results, tr
       path: resolvedPaths[index],
       type: PDF_MIME_TYPE,
       size: result.data.byteLength,
+      nextOperations: localResultHandoffs(PDF_MIME_TYPE).filter(name => name !== operation),
       ...(result.metadataCleanup ? { metadataCleanup: result.metadataCleanup } : {}),
     })),
   }

@@ -1,3 +1,4 @@
+import { localResultHandoffs } from '../skills/baimiao-local-media/scripts/result-handoffs.mjs'
 import { lstat, readFile, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { Readable } from 'node:stream'
@@ -96,6 +97,7 @@ const tools = [
     description: 'Upload a local PDF under the Baimiao OAuth grant and submit an asynchronous translation.',
     inputSchema: objectSchema({
       input_path: absolutePathSchema('Existing local PDF to upload.'),
+      output_format: { type: 'string', enum: ['word', 'pdf'], default: 'word' },
       target_language: { type: 'string', enum: TRANSLATION_LANGUAGES },
       mode: { type: 'string', enum: ['normal', 'compare'] },
     }, ['input_path', 'target_language', 'mode']),
@@ -139,7 +141,7 @@ export async function createBaimiaoServer({
         return result(request.id, {
           protocolVersion: negotiateProtocolVersion(request.params?.protocolVersion),
           capabilities: { tools: {} },
-          serverInfo: { name: 'baimiao-toolbox', version: '0.5.0' },
+          serverInfo: { name: 'baimiao-toolbox', version: '0.6.0' },
         })
       }
       if (request.method === 'notifications/initialized') return null
@@ -187,7 +189,7 @@ async function callTool(adapter, { name, arguments: args = {} } = {}, max_downlo
       const input = await inspectInput(args.input_path, PDF_EXTENSIONS)
       return toolResult(normalizeSubmission(await adapter.submit({
         operation: 'pdf-translate', input,
-        options: { target_language: requireEnum(args.target_language, TRANSLATION_LANGUAGES, 'target_language'), mode },
+        options: { output_format: requireEnum(args.output_format ?? 'word', ['word', 'pdf'], 'output_format'), target_language: requireEnum(args.target_language, TRANSLATION_LANGUAGES, 'target_language'), mode },
       })))
     }
     if (name === 'start_baimiao_ocr') {
@@ -253,7 +255,7 @@ async function saveResult(adapter, args, max_download_bytes) {
   return {
       task_id,
       status: 'completed',
-      output: { path: outputPath, bytes: committed.bytes, format: task.result?.format },
+      output: { path: outputPath, bytes: committed.bytes, format: task.result?.format, nextOperations: localResultHandoffs(task.result?.format) },
     }
 }
 

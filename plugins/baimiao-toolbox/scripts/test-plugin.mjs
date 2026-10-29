@@ -16,7 +16,7 @@ const sourcePlugin = process.env.BAIMIAO_PDF_PLUGIN_PATH
   ? path.resolve(process.env.BAIMIAO_PDF_PLUGIN_PATH)
   : projectRoot
 const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'baimiao-toolbox-plugin-test-'))
-const runtimeCache = path.join(temporaryRoot, 'runtime-cache')
+const runtimeCache = process.env.BAIMIAO_TEST_RUNTIME_CACHE || path.join(temporaryRoot, 'runtime-cache')
 process.env.BAIMIAO_PDF_RUNTIME_CACHE = runtimeCache
 let testMagickPromise
 
@@ -253,7 +253,7 @@ try {
     },
   })
   const initializedContract = await contractServer.handleRequest({ jsonrpc: '2.0', id: 100, method: 'initialize' })
-  assert.equal(initializedContract.result.serverInfo.version, '0.5.0')
+  assert.equal(initializedContract.result.serverInfo.version, '0.6.0')
   const contractTools = await contractServer.handleRequest({ jsonrpc: '2.0', id: 101, method: 'tools/list' })
   const translationTool = contractTools.result.tools.find((tool) => tool.name === 'start_baimiao_translation')
   assert.deepEqual(translationTool.inputSchema.properties.target_language.enum, [
@@ -273,6 +273,13 @@ try {
   })
   assert.equal(contractTranslation.result.structuredContent.task_id, 'contract-2')
   assert.equal(capturedSubmissions[1].input.num_pages, 2)
+  assert.equal(capturedSubmissions[1].options.output_format, 'word')
+  const invalidTranslationFormat = await contractServer.handleRequest({
+    jsonrpc: '2.0', id: 108, method: 'tools/call',
+    params: { name: 'start_baimiao_translation', arguments: { input_path: firstPdf, target_language: 'en', mode: 'normal', output_format: 'xlsx' } },
+  })
+  assert.equal(invalidTranslationFormat.result.structuredContent.error.code, 'INVALID_ARGUMENT')
+  assert.equal(capturedSubmissions.length, 2)
   const invalidLanguage = await contractServer.handleRequest({
     jsonrpc: '2.0', id: 103, method: 'tools/call',
     params: { name: 'start_baimiao_translation', arguments: { input_path: firstPdf, target_language: 'ja', mode: 'normal' } },
@@ -369,9 +376,10 @@ try {
   await httpAdapter.submit({
     operation: 'pdf-translate',
     input: { path: firstPdf, name: 'first.pdf', size: (await stat(firstPdf)).size, mimeType: 'application/pdf', num_pages: 2 },
-    options: { target_language: 'en', mode: 'normal' },
+    options: { target_language: 'en', mode: 'normal', output_format: 'pdf' },
   })
   assert.equal(requestBodies[1].num_pages, 2)
+  assert.equal(requestBodies[1].output_format, 'pdf')
   const textOcr = await httpAdapter.submit({
     operation: 'ocr', input: { path: imageFile, name: 'pixel.png', size: pluginIcon.length, mimeType: 'image/png' }, options: { kind: 'text' },
   })

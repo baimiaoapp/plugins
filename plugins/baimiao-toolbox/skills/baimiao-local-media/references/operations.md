@@ -1,5 +1,8 @@
 # Operations Reference
 
+The newer scan, Office, AI cutout/motion, watermark-removal, and target-compression operations are
+documented in [advanced-operations.md](advanced-operations.md), including their exact CLI options.
+
 ## Operation Selection
 
 | User intent | CLI operation | Required information |

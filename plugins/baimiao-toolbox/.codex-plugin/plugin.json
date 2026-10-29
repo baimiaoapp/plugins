@@ -1,23 +1,42 @@
 {
   "name": "baimiao-toolbox",
-  "version": "0.5.0",
-  "description": "Edit PDFs and media locally, with OAuth-authorized Baimiao OCR, document conversion, and translation.",
+  "version": "0.6.0",
+  "description": "Process PDFs, Office documents, scans and AI images locally, with OAuth-authorized cloud OCR, conversion and translation.",
   "author": {
     "name": "Baimiao",
     "url": "https://baimiaoapp.com/"
   },
   "homepage": "https://pdf.baimiaoapp.com/",
   "repository": "https://github.com/baimiaoapp/plugins/tree/main/plugins/baimiao-toolbox",
-  "keywords": ["pdf", "image", "ocr", "heic", "gif", "video", "compress", "convert", "translate", "background removal", "local"],
+  "keywords": [
+    "pdf",
+    "image",
+    "ocr",
+    "heic",
+    "gif",
+    "video",
+    "compress",
+    "convert",
+    "translate",
+    "background removal",
+    "local",
+    "scan",
+    "office",
+    "upscale",
+    "cutout"
+  ],
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "白描工具箱",
     "shortDescription": "本地处理 PDF 与媒体，按需使用白描 OCR 和文档服务。",
-    "longDescription": "在设备本地完成 PDF 页面整理与压缩、图片编辑、HEIC/GIF/视频转换和背景移除；仅在 OCR、PDF 转 Office/Markdown 和文档翻译时，通过 OAuth 授权接入白描服务。",
+    "longDescription": "本地完成 PDF 编辑与目标大小压缩、DOCX/PPTX 转 PDF、文档扫描增强、AI 放大、智能抠图和动效导出；云端 OCR、PDF 转 Office/Markdown 与文档翻译需要 OAuth 授权并可能消耗积分。本地 OCR 暂不提供。",
     "developerName": "白描",
     "category": "Productivity",
-    "capabilities": ["Interactive", "Write"],
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
     "websiteURL": "https://pdf.baimiaoapp.com/",
     "defaultPrompt": [
       "在本地整理并压缩这些 PDF，保留原文件。",
